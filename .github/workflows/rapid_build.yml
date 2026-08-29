@@ -1,0 +1,41 @@
+# Publishes any branch as the rapid tag "byar:br:<branch>", on request.
+name: Rapid build
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to build, published as "byar:br:<branch>"
+        required: true
+        type: string
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Trigger rapid build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha)"
+          token="$(curl -fsSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://t1.qwer.foo/build" | jq -r .value)"
+          rc=0
+          curl -sS --no-buffer --max-time 3600 -X POST \
+            --get --data-urlencode "repo=byar" --data-urlencode "branch=br:$BRANCH" \
+            --data-urlencode "commit=$commit" -D headers.txt \
+            -H "Authorization: Bearer $token" https://t1.qwer.foo/build \
+            | tee build.log || rc=$?
+          status="$(awk 'NR == 1 { print $2 }' headers.txt)"
+          case "$status" in
+            400 | 401 | 403)
+              echo "::error::rapid-build refused the request ($status), retrying will not help"
+              exit 1
+              ;;
+          esac
+          if [ "$rc" -ne 0 ] && ! tail -n1 build.log | grep -q "^Build succeeded: "; then
+            echo "::error::the build did not finish (HTTP $status, curl exit $rc)"
+            exit 1
+          fi
