@@ -1,0 +1,39 @@
+name: Rapid build
+description: Builds a commit and publishes it as a rapid tag.
+inputs:
+  url:
+    description: The service's build endpoint, e.g. https://rapid-build.example.com/build
+    required: true
+  repo:
+    description: Rapid repo to build, by its name in the service's config.
+    required: true
+  audience:
+    description: OIDC audience the service accepts. Defaults to url.
+    default: ""
+  ref:
+    description: >
+      PR number or branch name to build. Empty builds the commit that triggered
+      the workflow, which then needs branch.
+    default: ""
+  branch:
+    description: >
+      Rapid branch to publish. Empty derives it from ref, "pr-<number>" for a
+      PR and "br:<name>" for a branch.
+    default: ""
+  github-token:
+    description: Token that resolves ref. Needs contents:read.
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - name: Trigger rapid build
+      shell: bash
+      env:
+        # Composite actions don't put inputs in the environment themselves.
+        INPUT_URL: ${{ inputs.url }}
+        INPUT_REPO: ${{ inputs.repo }}
+        INPUT_AUDIENCE: ${{ inputs.audience }}
+        INPUT_REF: ${{ inputs.ref }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: "$GITHUB_ACTION_PATH/rapid-build.sh"
